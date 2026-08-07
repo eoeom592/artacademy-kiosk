@@ -37,8 +37,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
-  // Google Sheets API 요청은 캐시하지 않음
-  if (url.includes('script.google.com') || url.includes('googleapis.com')) {
+  // Google Sheets / Cloudflare 프록시 요청은 캐시하지 않음
+  if (url.includes('script.google.com') || url.includes('googleapis.com') || url.includes('workers.dev')) {
     return; // 브라우저 기본 처리
   }
 
