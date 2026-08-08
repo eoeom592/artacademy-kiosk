@@ -1,8 +1,6 @@
-// 캐시 버전 — 새 빌드 배포 시 번호를 올리세요 (예: v2, v3 ...)
-const CACHE_NAME = 'artacademy-v1';
+// 캐시 버전 — 새 빌드 배포 시 번호를 올리세요 (예: v3, v4 ...)
+const CACHE_NAME = 'artacademy-v2';
 
-// 앱 시작에 필요한 최소 파일 목록
-// Unity 빌드 파일명은 자동으로 추가됩니다 (아래 install 핸들러 참고)
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -33,26 +31,38 @@ self.addEventListener('activate', event => {
   );
 });
 
-// ── 요청 처리: 네트워크 우선, 실패 시 캐시 ───────────────────────
+// ── 안전한 캐시 저장 (clone 실패 방지) ───────────────────────────
+function tryCacheResponse(request, response) {
+  // 206 Partial Content, 이미 소비된 응답, 실패 응답은 캐시 불가
+  if (!response.ok || response.status === 206 || response.bodyUsed) return;
+  try {
+    const clone = response.clone();
+    caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+  } catch (e) {
+    // 스트리밍 등 clone 불가능한 응답 → 무시
+  }
+}
+
+// ── 요청 처리 ─────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
   // Google Sheets / Cloudflare 프록시 요청은 캐시하지 않음
   if (url.includes('script.google.com') || url.includes('googleapis.com') || url.includes('workers.dev')) {
-    return; // 브라우저 기본 처리
+    return;
   }
 
-  // Unity 빌드 파일(.data, .wasm) – 캐시 우선 (대용량이므로 재다운로드 방지)
-  if (url.endsWith('.data') || url.endsWith('.wasm') ||
+  // Unity 빌드 파일 – 캐시 우선 (대용량 재다운로드 방지)
+  // .unityweb = Unity 6 압축 포맷 포함
+  if (url.endsWith('.data')    || url.endsWith('.wasm')    ||
       url.endsWith('.data.br') || url.endsWith('.wasm.br') ||
-      url.endsWith('.data.gz') || url.endsWith('.wasm.gz')) {
+      url.endsWith('.data.gz') || url.endsWith('.wasm.gz') ||
+      url.endsWith('.unityweb')) {
     event.respondWith(
       caches.match(event.request).then(cached => {
         if (cached) return cached;
         return fetch(event.request).then(response => {
-          if (response.ok) {
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
-          }
+          tryCacheResponse(event.request, response);
           return response;
         });
       })
@@ -64,9 +74,7 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        if (response.ok) {
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
-        }
+        tryCacheResponse(event.request, response);
         return response;
       })
       .catch(() => caches.match(event.request))
